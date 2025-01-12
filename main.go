@@ -17,6 +17,9 @@ func main() {
 
 	r.POST("/user", handlers.CreateUser)
 
+	r.GET("/user/:id/movie", handlers.GetUserMoviesByStatus)
+	r.GET("/user/:id/tv", handlers.GetUserTVShowsByStatus)
+
 	// Let's init the server
 	r.Run(":8080")
 }

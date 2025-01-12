@@ -133,3 +133,63 @@ func processTVShow(c *gin.Context, user model.User, tvShow *model.TVShow, status
 
 	c.JSON(http.StatusOK, gin.H{"message": "User-tv_show relation processed successfully"})
 }
+
+func GetUserMoviesByStatus(c *gin.Context) {
+	// Let's get the id from the path
+	userID := c.Param("id")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
+		return
+	}
+
+	// Parse JSON to get the status
+	var input struct {
+		Status int `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Let's make the query
+	var movies []model.Movie
+	err := database.DB.Joins("JOIN user_movies ON user_movies.movie_id = movies.id").
+		Where("user_movies.user_id = ? AND user_movies.status = ?", userID, input.Status).
+		Find(&movies).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch movies"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"movies": movies})
+}
+
+func GetUserTVShowsByStatus(c *gin.Context) {
+	// Let's get the id from the path
+	userID := c.Param("id")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
+		return
+	}
+
+	// Parse JSON to get the status
+	var input struct {
+		Status int `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Let's make the query
+	var tvShows []model.TVShow
+	err := database.DB.Joins("JOIN user_tv_shows ON user_tv_shows.tv_show_id = tv_shows.id").
+		Where("user_tv_shows.user_id = ? AND user_tv_shows.status = ?", userID, input.Status).
+		Find(&tvShows).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch TV shows"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"tv_shows": tvShows})
+}
