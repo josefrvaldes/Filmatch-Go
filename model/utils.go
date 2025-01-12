@@ -5,7 +5,7 @@ import (
 	"log"
 )
 
-func toJSON(data interface{}) string {
+func ToJSON(data interface{}) string {
 	bytes, err := json.Marshal(data)
 	if err != nil {
 		log.Println("Failed to serialize data:", err)
@@ -14,7 +14,7 @@ func toJSON(data interface{}) string {
 	return string(bytes)
 }
 
-func fromJSONIntSlice(data string) []int {
+func FromJSONIntSlice(data string) []int {
 	var result []int
 	if err := json.Unmarshal([]byte(data), &result); err != nil {
 		log.Println("Failed to deserialize data:", err)
@@ -22,7 +22,7 @@ func fromJSONIntSlice(data string) []int {
 	return result
 }
 
-func fromJSONStringSlice(data string) []string {
+func FromJSONStringSlice(data string) []string {
 	var result []string
 	if err := json.Unmarshal([]byte(data), &result); err != nil {
 		log.Println("Failed to deserialize data:", err)

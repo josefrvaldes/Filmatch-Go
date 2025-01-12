@@ -13,7 +13,7 @@ func main() {
 
 	// Let's setup routes
 	r := gin.Default()
-	r.POST("/movies", handlers.CreateContent)
+	r.POST("/user/content", handlers.CreateUserContent)
 
 	r.POST("/user", handlers.CreateUser)
 
