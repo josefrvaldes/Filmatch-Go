@@ -19,7 +19,7 @@ jobs:
         go-version: 1.22.2
 
     - name: Build the app
-      run: go build -o app main.go
+      run: go build -o filmatch_app main.go
 
     - name: Deploy to server
       uses: appleboy/scp-action@v0.1.4
@@ -27,8 +27,8 @@ jobs:
         host: ${{ secrets.SERVER_IP }}
         username: ${{ secrets.SERVER_USERNAME }}
         password: ${{ secrets.SERVER_PASSWORD }}
-        source: "./app"
-        target: "~/filmatch_go/filmatch_go"
+        source: "./filmatch_app"
+        target: "~/filmatch_go"
 
     - name: Restart app
       uses: appleboy/ssh-action@v0.1.8
@@ -37,5 +37,5 @@ jobs:
         username: ${{ secrets.SERVER_USERNAME }}
         password: ${{ secrets.SERVER_PASSWORD }}
         script: |
-          pkill filmatch_go || true
-          nohup ./filmatch_go > filmatch_go.log 2>&1 &
+          pkill filmatch_app || true
+          nohup ./filmatch_app > filmatch_app.log 2>&1 &
