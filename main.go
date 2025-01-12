@@ -21,5 +21,5 @@ func main() {
 	r.GET("/user/:id/tv", handlers.GetUserTVShowsByStatus)
 
 	// Let's init the server
-	r.Run(":8080")
+	r.Run(":9090")
 }

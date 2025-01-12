@@ -38,4 +38,4 @@ jobs:
         password: ${{ secrets.SERVER_PASSWORD }}
         script: |
           pkill filmatch_app || true
-          nohup ./filmatch_app > filmatch_app.log 2>&1 &
+          nohup ./filmatch_go/filmatch_app > ./filmatch_go/filmatch_app.log 2>&1 &
