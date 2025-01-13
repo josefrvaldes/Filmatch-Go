@@ -35,6 +35,13 @@ func LoginUser(c *gin.Context) {
 		return
 	}
 
+	// Let's get the uid from the context object
+	uid, exists := c.Get("uid")
+	if !exists || email == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Uid not found in context"})
+		return
+	}
+
 	// let's check if the email is a string
 	emailStr, ok := email.(string)
 	if !ok {
@@ -49,6 +56,7 @@ func LoginUser(c *gin.Context) {
 			// Let's create a new user if it doesn't exist
 			newUser := model.User{
 				Email: emailStr,
+				UID:   uid.(string),
 			}
 			if err := database.DB.Create(&newUser).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user", "details": err.Error()})
