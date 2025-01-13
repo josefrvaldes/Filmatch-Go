@@ -26,6 +26,8 @@ func main() {
 
 	r.Use(middleware.FirebaseAuthMiddleware(client))
 
+	r.POST("/user/login", handlers.LoginUser)
+
 	r.POST("/user/content", handlers.CreateUserContent)
 
 	r.POST("/user", handlers.CreateUser)
