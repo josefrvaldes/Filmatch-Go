@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 
 	"filmatch/database"
 	"filmatch/model"
@@ -134,15 +136,15 @@ func processTVShow(c *gin.Context, user model.User, tvShow *model.TVShow, status
 	c.JSON(http.StatusOK, gin.H{"message": "User-tv_show relation processed successfully"})
 }
 
-func GetUserMoviesByStatus(c *gin.Context) {
-	// Let's get the id from the path
+func getUserContentByStatus[T any](c *gin.Context, tableName string, joinTable string, column string) {
+	// Get the user ID from the path
 	userID := c.Param("id")
 	if userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
 		return
 	}
 
-	// Parse JSON to get the status
+	// Parse the status from the JSON body
 	var input struct {
 		Status int `json:"status"`
 	}
@@ -151,45 +153,53 @@ func GetUserMoviesByStatus(c *gin.Context) {
 		return
 	}
 
-	// Let's make the query
-	var movies []model.Movie
-	err := database.DB.Joins("JOIN user_movies ON user_movies.movie_id = movies.id").
-		Where("user_movies.user_id = ? AND user_movies.status = ?", userID, input.Status).
-		Find(&movies).Error
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch movies"})
+	// Pagination parameters
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	resultsPerPage := 20
+
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * resultsPerPage
+
+	// Fetch total count
+	var totalResults int64
+	if err := database.DB.Table(tableName).
+		Joins(fmt.Sprintf("JOIN %s ON %s.%s = %s.id", joinTable, joinTable, column, tableName)).
+		Where(fmt.Sprintf("%s.user_id = ? AND %s.status = ?", joinTable, joinTable), userID, input.Status).
+		Count(&totalResults).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count results"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"movies": movies})
+	// Fetch paginated results
+	var results []T
+	if err := database.DB.Table(tableName).
+		Joins(fmt.Sprintf("JOIN %s ON %s.%s = %s.id", joinTable, joinTable, column, tableName)).
+		Where(fmt.Sprintf("%s.user_id = ? AND %s.status = ?", joinTable, joinTable), userID, input.Status).
+		Limit(resultsPerPage).Offset(offset).
+		Find(&results).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch results"})
+		return
+	}
+
+	// Calculate total pages
+	totalPages := int((totalResults + int64(resultsPerPage) - 1) / int64(resultsPerPage))
+
+	// Response
+	c.JSON(http.StatusOK, gin.H{
+		"page":             page,
+		"results":          results,
+		"results_per_page": resultsPerPage,
+		"total_pages":      totalPages,
+		"total_results":    totalResults,
+	})
+}
+
+func GetUserMoviesByStatus(c *gin.Context) {
+	getUserContentByStatus[model.Movie](c, "movies", "user_movies", "movie_id")
 }
 
 func GetUserTVShowsByStatus(c *gin.Context) {
-	// Let's get the id from the path
-	userID := c.Param("id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
-		return
-	}
-
-	// Parse JSON to get the status
-	var input struct {
-		Status int `json:"status"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	// Let's make the query
-	var tvShows []model.TVShow
-	err := database.DB.Joins("JOIN user_tv_shows ON user_tv_shows.tv_show_id = tv_shows.id").
-		Where("user_tv_shows.user_id = ? AND user_tv_shows.status = ?", userID, input.Status).
-		Find(&tvShows).Error
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch TV shows"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"tv_shows": tvShows})
+	getUserContentByStatus[model.TVShow](c, "tv_shows", "user_tv_shows", "tv_show_id")
 }
