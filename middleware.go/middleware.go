@@ -69,6 +69,7 @@ func FirebaseAuthMiddleware(client *auth.Client) gin.HandlerFunc {
 		}
 
 		// Let's add the current user fields to the context
+		currentContext.Set("userId", user.ID)
 		currentContext.Set("uid", token.UID)
 		currentContext.Set("email", token.Claims["email"])
 		currentContext.Next()
