@@ -14,10 +14,24 @@ import (
 
 func CreateUserContent(c *gin.Context) {
 	var input struct {
-		User   model.User    `json:"user"`
 		Movie  *model.Movie  `json:"movie,omitempty"`
 		TVShow *model.TVShow `json:"tv_show,omitempty"`
 		Status int           `json:"status"`
+	}
+
+	// let's verify if the user id is in the context. That means that this endpoint has been
+	// protected by the middleware and therefore we don't need to check if the user exists again
+	userId, exists := c.Get("userId")
+	if !exists || userId == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId not found in context"})
+		return
+	}
+
+	// Ensure userId is of type uint
+	userIdUint, ok := userId.(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId is not a valid uint"})
+		return
 	}
 
 	// Parse JSON
@@ -26,24 +40,17 @@ func CreateUserContent(c *gin.Context) {
 		return
 	}
 
-	// Verify or create the user
-	var user model.User
-	if err := database.DB.Where("email = ?", input.User.Email).First(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find user"})
-		return
-	}
-
 	// Verifiy content type (movie or tv_show)
 	if input.Movie != nil {
-		processMovie(c, user, input.Movie, input.Status)
+		processMovie(c, userIdUint, input.Movie, input.Status)
 	} else if input.TVShow != nil {
-		processTVShow(c, user, input.TVShow, input.Status)
+		processTVShow(c, userIdUint, input.TVShow, input.Status)
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No valid content provided"})
 	}
 }
 
-func processMovie(c *gin.Context, user model.User, movie *model.Movie, status int) {
+func processMovie(c *gin.Context, userId uint, movie *model.Movie, status int) {
 	var existingMovie model.Movie
 	if err := database.DB.Where("tmdb_id = ?", movie.TMDBID).First(&existingMovie).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -63,10 +70,10 @@ func processMovie(c *gin.Context, user model.User, movie *model.Movie, status in
 
 	// Many to Many relationship
 	var userMovie model.UserMovie
-	if err := database.DB.Where("user_id = ? AND movie_id = ?", user.ID, movie.ID).First(&userMovie).Error; err != nil {
+	if err := database.DB.Where("user_id = ? AND movie_id = ?", userId, movie.ID).First(&userMovie).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			userMovie = model.UserMovie{
-				UserID:  user.ID,
+				UserID:  userId,
 				MovieID: movie.ID,
 				Status:  status,
 			}
@@ -89,7 +96,7 @@ func processMovie(c *gin.Context, user model.User, movie *model.Movie, status in
 	c.JSON(http.StatusOK, gin.H{"message": "User-movie relation processed successfully"})
 }
 
-func processTVShow(c *gin.Context, user model.User, tvShow *model.TVShow, status int) {
+func processTVShow(c *gin.Context, userId uint, tvShow *model.TVShow, status int) {
 	var existingTVShow model.TVShow
 	if err := database.DB.Where("tmdb_id = ?", tvShow.TMDBID).First(&existingTVShow).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -110,10 +117,10 @@ func processTVShow(c *gin.Context, user model.User, tvShow *model.TVShow, status
 
 	// Many to Many relationship
 	var userTVShow model.UserTVShow
-	if err := database.DB.Where("user_id = ? AND tv_show_id = ?", user.ID, tvShow.ID).First(&userTVShow).Error; err != nil {
+	if err := database.DB.Where("user_id = ? AND tv_show_id = ?", userId, tvShow.ID).First(&userTVShow).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			userTVShow = model.UserTVShow{
-				UserID:   user.ID,
+				UserID:   userId,
 				TVShowID: tvShow.ID,
 				Status:   status,
 			}
