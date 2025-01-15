@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 
 	"filmatch/database"
 	"filmatch/model"
@@ -12,10 +14,24 @@ import (
 
 func CreateUserContent(c *gin.Context) {
 	var input struct {
-		User   model.User    `json:"user"`
 		Movie  *model.Movie  `json:"movie,omitempty"`
 		TVShow *model.TVShow `json:"tv_show,omitempty"`
 		Status int           `json:"status"`
+	}
+
+	// let's verify if the user id is in the context. That means that this endpoint has been
+	// protected by the middleware and therefore we don't need to check if the user exists again
+	userId, exists := c.Get("userId")
+	if !exists || userId == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId not found in context"})
+		return
+	}
+
+	// Ensure userId is of type uint
+	userIdUint, ok := userId.(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId is not a valid uint"})
+		return
 	}
 
 	// Parse JSON
@@ -24,24 +40,17 @@ func CreateUserContent(c *gin.Context) {
 		return
 	}
 
-	// Verify or create the user
-	var user model.User
-	if err := database.DB.Where("email = ?", input.User.Email).First(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find user"})
-		return
-	}
-
 	// Verifiy content type (movie or tv_show)
 	if input.Movie != nil {
-		processMovie(c, user, input.Movie, input.Status)
+		processMovie(c, userIdUint, input.Movie, input.Status)
 	} else if input.TVShow != nil {
-		processTVShow(c, user, input.TVShow, input.Status)
+		processTVShow(c, userIdUint, input.TVShow, input.Status)
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No valid content provided"})
 	}
 }
 
-func processMovie(c *gin.Context, user model.User, movie *model.Movie, status int) {
+func processMovie(c *gin.Context, userId uint, movie *model.Movie, status int) {
 	var existingMovie model.Movie
 	if err := database.DB.Where("tmdb_id = ?", movie.TMDBID).First(&existingMovie).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -61,10 +70,10 @@ func processMovie(c *gin.Context, user model.User, movie *model.Movie, status in
 
 	// Many to Many relationship
 	var userMovie model.UserMovie
-	if err := database.DB.Where("user_id = ? AND movie_id = ?", user.ID, movie.ID).First(&userMovie).Error; err != nil {
+	if err := database.DB.Where("user_id = ? AND movie_id = ?", userId, movie.ID).First(&userMovie).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			userMovie = model.UserMovie{
-				UserID:  user.ID,
+				UserID:  userId,
 				MovieID: movie.ID,
 				Status:  status,
 			}
@@ -87,7 +96,7 @@ func processMovie(c *gin.Context, user model.User, movie *model.Movie, status in
 	c.JSON(http.StatusOK, gin.H{"message": "User-movie relation processed successfully"})
 }
 
-func processTVShow(c *gin.Context, user model.User, tvShow *model.TVShow, status int) {
+func processTVShow(c *gin.Context, userId uint, tvShow *model.TVShow, status int) {
 	var existingTVShow model.TVShow
 	if err := database.DB.Where("tmdb_id = ?", tvShow.TMDBID).First(&existingTVShow).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -108,10 +117,10 @@ func processTVShow(c *gin.Context, user model.User, tvShow *model.TVShow, status
 
 	// Many to Many relationship
 	var userTVShow model.UserTVShow
-	if err := database.DB.Where("user_id = ? AND tv_show_id = ?", user.ID, tvShow.ID).First(&userTVShow).Error; err != nil {
+	if err := database.DB.Where("user_id = ? AND tv_show_id = ?", userId, tvShow.ID).First(&userTVShow).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			userTVShow = model.UserTVShow{
-				UserID:   user.ID,
+				UserID:   userId,
 				TVShowID: tvShow.ID,
 				Status:   status,
 			}
@@ -134,15 +143,15 @@ func processTVShow(c *gin.Context, user model.User, tvShow *model.TVShow, status
 	c.JSON(http.StatusOK, gin.H{"message": "User-tv_show relation processed successfully"})
 }
 
-func GetUserMoviesByStatus(c *gin.Context) {
-	// Let's get the id from the path
+func getUserContentByStatus[T any](c *gin.Context, tableName string, joinTable string, column string) {
+	// Get the user ID from the path
 	userID := c.Param("id")
 	if userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
 		return
 	}
 
-	// Parse JSON to get the status
+	// Parse the status from the JSON body
 	var input struct {
 		Status int `json:"status"`
 	}
@@ -151,45 +160,53 @@ func GetUserMoviesByStatus(c *gin.Context) {
 		return
 	}
 
-	// Let's make the query
-	var movies []model.Movie
-	err := database.DB.Joins("JOIN user_movies ON user_movies.movie_id = movies.id").
-		Where("user_movies.user_id = ? AND user_movies.status = ?", userID, input.Status).
-		Find(&movies).Error
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch movies"})
+	// Pagination parameters
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	resultsPerPage := 20
+
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * resultsPerPage
+
+	// Fetch total count
+	var totalResults int64
+	if err := database.DB.Table(tableName).
+		Joins(fmt.Sprintf("JOIN %s ON %s.%s = %s.id", joinTable, joinTable, column, tableName)).
+		Where(fmt.Sprintf("%s.user_id = ? AND %s.status = ?", joinTable, joinTable), userID, input.Status).
+		Count(&totalResults).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count results"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"movies": movies})
+	// Fetch paginated results
+	var results []T
+	if err := database.DB.Table(tableName).
+		Joins(fmt.Sprintf("JOIN %s ON %s.%s = %s.id", joinTable, joinTable, column, tableName)).
+		Where(fmt.Sprintf("%s.user_id = ? AND %s.status = ?", joinTable, joinTable), userID, input.Status).
+		Limit(resultsPerPage).Offset(offset).
+		Find(&results).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch results"})
+		return
+	}
+
+	// Calculate total pages
+	totalPages := int((totalResults + int64(resultsPerPage) - 1) / int64(resultsPerPage))
+
+	// Response
+	c.JSON(http.StatusOK, gin.H{
+		"page":             page,
+		"results":          results,
+		"results_per_page": resultsPerPage,
+		"total_pages":      totalPages,
+		"total_results":    totalResults,
+	})
+}
+
+func GetUserMoviesByStatus(c *gin.Context) {
+	getUserContentByStatus[model.Movie](c, "movies", "user_movies", "movie_id")
 }
 
 func GetUserTVShowsByStatus(c *gin.Context) {
-	// Let's get the id from the path
-	userID := c.Param("id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
-		return
-	}
-
-	// Parse JSON to get the status
-	var input struct {
-		Status int `json:"status"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	// Let's make the query
-	var tvShows []model.TVShow
-	err := database.DB.Joins("JOIN user_tv_shows ON user_tv_shows.tv_show_id = tv_shows.id").
-		Where("user_tv_shows.user_id = ? AND user_tv_shows.status = ?", userID, input.Status).
-		Find(&tvShows).Error
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch TV shows"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"tv_shows": tvShows})
+	getUserContentByStatus[model.TVShow](c, "tv_shows", "user_tv_shows", "tv_show_id")
 }
