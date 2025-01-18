@@ -1,4 +1,4 @@
-package middleware
+package interceptors
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func FirebaseAuthMiddleware(client *auth.Client) gin.HandlerFunc {
+func FirebaseAuthInterceptor(client *auth.Client) gin.HandlerFunc {
 	return func(currentContext *gin.Context) {
 		// Let's extract the Authorization header
 		authHeader := currentContext.GetHeader("Authorization")
@@ -48,7 +48,7 @@ func FirebaseAuthMiddleware(client *auth.Client) gin.HandlerFunc {
 		}
 
 		// If the endpoint is "/user/login", let's omit the database query, the user may not exist yet
-		if currentContext.Request.URL.Path == "/user/login" {
+		if currentContext.Request.URL.Path == "/user/auth" {
 			currentContext.Set("uid", token.UID)
 			currentContext.Set("email", email)
 			currentContext.Next()

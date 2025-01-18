@@ -5,7 +5,7 @@ import (
 	"filmatch/database"
 	"filmatch/firebase"
 	"filmatch/handlers"
-	"filmatch/middleware.go"
+	"filmatch/interceptors"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,16 +24,14 @@ func main() {
 	// Let's setup routes
 	r := gin.Default()
 
-	r.Use(middleware.FirebaseAuthMiddleware(client))
+	r.Use(interceptors.FirebaseAuthInterceptor(client))
 
-	r.POST("/user/login", handlers.LoginUser)
+	r.POST("/user/auth", handlers.PerformAuth)
 
-	r.POST("/user/content", handlers.CreateUserContent)
+	r.POST("/user/content", handlers.CreateUserVisit)
 
-	r.POST("/user", handlers.CreateUser)
-
-	r.GET("/user/:id/movie", handlers.GetUserMoviesByStatus)
-	r.GET("/user/:id/tv", handlers.GetUserTVShowsByStatus)
+	r.GET("/user/:id/movie", handlers.GetUserVisitMoviesByStatus)
+	r.GET("/user/:id/tv", handlers.GetUserVisitTVShowsByStatus)
 
 	// Let's init the server
 	r.Run(":9090")

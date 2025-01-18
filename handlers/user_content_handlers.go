@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func CreateUserContent(c *gin.Context) {
+func CreateUserVisit(c *gin.Context) {
 	var input struct {
 		Movie  *model.Movie  `json:"movie,omitempty"`
 		TVShow *model.TVShow `json:"tv_show,omitempty"`
@@ -42,15 +42,15 @@ func CreateUserContent(c *gin.Context) {
 
 	// Verifiy content type (movie or tv_show)
 	if input.Movie != nil {
-		processMovie(c, userIdUint, input.Movie, input.Status)
+		createUserVisitMovie(c, userIdUint, input.Movie, input.Status)
 	} else if input.TVShow != nil {
-		processTVShow(c, userIdUint, input.TVShow, input.Status)
+		createUserVisitTVShow(c, userIdUint, input.TVShow, input.Status)
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No valid content provided"})
 	}
 }
 
-func processMovie(c *gin.Context, userId uint, movie *model.Movie, status int) {
+func createUserVisitMovie(c *gin.Context, userId uint, movie *model.Movie, status int) {
 	var existingMovie model.Movie
 	if err := database.DB.Where("tmdb_id = ?", movie.TMDBID).First(&existingMovie).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -96,7 +96,7 @@ func processMovie(c *gin.Context, userId uint, movie *model.Movie, status int) {
 	c.JSON(http.StatusOK, gin.H{"message": "User-movie relation processed successfully"})
 }
 
-func processTVShow(c *gin.Context, userId uint, tvShow *model.TVShow, status int) {
+func createUserVisitTVShow(c *gin.Context, userId uint, tvShow *model.TVShow, status int) {
 	var existingTVShow model.TVShow
 	if err := database.DB.Where("tmdb_id = ?", tvShow.TMDBID).First(&existingTVShow).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -143,7 +143,7 @@ func processTVShow(c *gin.Context, userId uint, tvShow *model.TVShow, status int
 	c.JSON(http.StatusOK, gin.H{"message": "User-tv_show relation processed successfully"})
 }
 
-func getUserContentByStatus[T any](c *gin.Context, tableName string, joinTable string, column string) {
+func getUserVisitsByStatus[T any](c *gin.Context, tableName string, joinTable string, column string) {
 	// Get the user ID from the path
 	userID := c.Param("id")
 	if userID == "" {
@@ -203,10 +203,10 @@ func getUserContentByStatus[T any](c *gin.Context, tableName string, joinTable s
 	})
 }
 
-func GetUserMoviesByStatus(c *gin.Context) {
-	getUserContentByStatus[model.Movie](c, "movies", "user_movies", "movie_id")
+func GetUserVisitMoviesByStatus(c *gin.Context) {
+	getUserVisitsByStatus[model.Movie](c, "movies", "user_movies", "movie_id")
 }
 
-func GetUserTVShowsByStatus(c *gin.Context) {
-	getUserContentByStatus[model.TVShow](c, "tv_shows", "user_tv_shows", "tv_show_id")
+func GetUserVisitTVShowsByStatus(c *gin.Context) {
+	getUserVisitsByStatus[model.TVShow](c, "tv_shows", "user_tv_shows", "tv_show_id")
 }
