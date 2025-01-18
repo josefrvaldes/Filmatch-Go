@@ -8,31 +8,51 @@ import (
 	"filmatch/interceptors"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func main() {
 	// Connect to the db
 	database.ConnectDatabase()
 
+	// let's init the firebase auth client
 	firebase.InitFirebase()
-	client, err := firebase.App.Auth(context.Background())
+	firebaseClient, err := firebase.App.Auth(context.Background())
+	authClient := firebase.NewFirebaseAuthClient(firebaseClient)
 
 	if err != nil {
 		panic("Failed to connect to Firebase")
 	}
 
 	// Let's setup routes
-	r := gin.Default()
+	engine := gin.Default()
 
-	r.Use(interceptors.FirebaseAuthInterceptor(client))
+	// adding interceptors
+	engine.Use(interceptors.VersionInterceptor())
+	engine.Use(interceptors.FirebaseAuthInterceptor(authClient, database.DB))
 
-	r.POST("/user/auth", handlers.PerformAuth)
-
-	r.POST("/user/content", handlers.CreateUserVisit)
-
-	r.GET("/user/:id/movie", handlers.GetUserVisitMoviesByStatus)
-	r.GET("/user/:id/tv", handlers.GetUserVisitTVShowsByStatus)
+	SetupRoutes(engine, database.DB)
 
 	// Let's init the server
-	r.Run(":9090")
+	engine.Run(":9090")
+}
+
+func SetupRoutes(engine *gin.Engine, db *gorm.DB) {
+	engine.POST("/user/auth", func(c *gin.Context) {
+		handlers.PerformAuth(c, db)
+	})
+
+	engine.POST("/user/content", func(c *gin.Context) {
+		handlers.CreateUserVisit(c, db)
+	})
+
+	engine.GET("/user/:id/movie", func(c *gin.Context) {
+		handlers.GetUserVisitMoviesByStatus(c, db)
+	})
+
+	engine.GET("/user/:id/tv", func(c *gin.Context) {
+		handlers.GetUserVisitTVShowsByStatus(c, db)
+	})
+
+	engine.GET("/health", handlers.HealthCheck)
 }

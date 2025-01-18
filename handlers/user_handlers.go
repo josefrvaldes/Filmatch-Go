@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"filmatch/database"
 	"filmatch/model"
 	"net/http"
 
@@ -9,8 +8,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// POST /user/login
-func PerformAuth(c *gin.Context) {
+// POST /user/auth
+func PerformAuth(c *gin.Context, db *gorm.DB) {
 	// Let's get the email from the context object
 	email, exists := c.Get("email")
 	if !exists || email == "" {
@@ -34,14 +33,14 @@ func PerformAuth(c *gin.Context) {
 
 	// Let's verify if the user exists in the db
 	var user model.User
-	if err := database.DB.Where("email = ?", emailStr).First(&user).Error; err != nil {
+	if err := db.Where("email = ?", emailStr).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			// Let's create a new user if it doesn't exist
 			newUser := model.User{
 				Email: emailStr,
 				UID:   uid.(string),
 			}
-			if err := database.DB.Create(&newUser).Error; err != nil {
+			if err := db.Create(&newUser).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user", "details": err.Error()})
 				return
 			}
