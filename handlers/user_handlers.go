@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"filmatch/database"
 	"filmatch/model"
 	"net/http"
 
@@ -9,25 +8,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// POST /user
-func CreateUser(context *gin.Context) {
-	var user model.User
-	if err := context.ShouldBindJSON(&user); err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Let's save into the db
-	if err := database.DB.Create(&user).Error; err != nil {
-		context.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save user"})
-		return
-	}
-
-	context.JSON(http.StatusCreated, gin.H{"data": user})
-}
-
-// POST /user/login
-func LoginUser(c *gin.Context) {
+// POST /user/auth
+func PerformAuth(c *gin.Context, db *gorm.DB) {
 	// Let's get the email from the context object
 	email, exists := c.Get("email")
 	if !exists || email == "" {
@@ -37,7 +19,7 @@ func LoginUser(c *gin.Context) {
 
 	// Let's get the uid from the context object
 	uid, exists := c.Get("uid")
-	if !exists || email == "" {
+	if !exists || uid == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Uid not found in context"})
 		return
 	}
@@ -51,14 +33,14 @@ func LoginUser(c *gin.Context) {
 
 	// Let's verify if the user exists in the db
 	var user model.User
-	if err := database.DB.Where("email = ?", emailStr).First(&user).Error; err != nil {
+	if err := db.Where("email = ?", emailStr).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			// Let's create a new user if it doesn't exist
 			newUser := model.User{
 				Email: emailStr,
 				UID:   uid.(string),
 			}
-			if err := database.DB.Create(&newUser).Error; err != nil {
+			if err := db.Create(&newUser).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user", "details": err.Error()})
 				return
 			}

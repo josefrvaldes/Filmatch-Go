@@ -5,14 +5,13 @@ import (
 	"net/http"
 	"strconv"
 
-	"filmatch/database"
 	"filmatch/model"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-func CreateUserContent(c *gin.Context) {
+func CreateUserVisit(c *gin.Context, db *gorm.DB) {
 	var input struct {
 		Movie  *model.Movie  `json:"movie,omitempty"`
 		TVShow *model.TVShow `json:"tv_show,omitempty"`
@@ -42,21 +41,21 @@ func CreateUserContent(c *gin.Context) {
 
 	// Verifiy content type (movie or tv_show)
 	if input.Movie != nil {
-		processMovie(c, userIdUint, input.Movie, input.Status)
+		createUserVisitMovie(c, db, userIdUint, input.Movie, input.Status)
 	} else if input.TVShow != nil {
-		processTVShow(c, userIdUint, input.TVShow, input.Status)
+		createUserVisitTVShow(c, db, userIdUint, input.TVShow, input.Status)
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No valid content provided"})
 	}
 }
 
-func processMovie(c *gin.Context, userId uint, movie *model.Movie, status int) {
+func createUserVisitMovie(c *gin.Context, db *gorm.DB, userId uint, movie *model.Movie, status int) {
 	var existingMovie model.Movie
-	if err := database.DB.Where("tmdb_id = ?", movie.TMDBID).First(&existingMovie).Error; err != nil {
+	if err := db.Where("tmdb_id = ?", movie.TMDBID).First(&existingMovie).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			// Serialize GenreIDs
 			movie.GenreIDsRaw = model.ToJSON(movie.GenreIDs)
-			if err := database.DB.Create(movie).Error; err != nil {
+			if err := db.Create(movie).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create movie"})
 				return
 			}
@@ -70,14 +69,14 @@ func processMovie(c *gin.Context, userId uint, movie *model.Movie, status int) {
 
 	// Many to Many relationship
 	var userMovie model.UserMovie
-	if err := database.DB.Where("user_id = ? AND movie_id = ?", userId, movie.ID).First(&userMovie).Error; err != nil {
+	if err := db.Where("user_id = ? AND movie_id = ?", userId, movie.ID).First(&userMovie).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			userMovie = model.UserMovie{
 				UserID:  userId,
 				MovieID: movie.ID,
 				Status:  status,
 			}
-			if err := database.DB.Create(&userMovie).Error; err != nil {
+			if err := db.Create(&userMovie).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user-movie relation"})
 				return
 			}
@@ -87,7 +86,7 @@ func processMovie(c *gin.Context, userId uint, movie *model.Movie, status int) {
 		}
 	} else {
 		userMovie.Status = status
-		if err := database.DB.Save(&userMovie).Error; err != nil {
+		if err := db.Save(&userMovie).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user-movie relation"})
 			return
 		}
@@ -96,14 +95,14 @@ func processMovie(c *gin.Context, userId uint, movie *model.Movie, status int) {
 	c.JSON(http.StatusOK, gin.H{"message": "User-movie relation processed successfully"})
 }
 
-func processTVShow(c *gin.Context, userId uint, tvShow *model.TVShow, status int) {
+func createUserVisitTVShow(c *gin.Context, db *gorm.DB, userId uint, tvShow *model.TVShow, status int) {
 	var existingTVShow model.TVShow
-	if err := database.DB.Where("tmdb_id = ?", tvShow.TMDBID).First(&existingTVShow).Error; err != nil {
+	if err := db.Where("tmdb_id = ?", tvShow.TMDBID).First(&existingTVShow).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			// Serialize GenreIDs and OriginCountry
 			tvShow.GenreIDsRaw = model.ToJSON(tvShow.GenreIDs)
 			tvShow.OriginRaw = model.ToJSON(tvShow.OriginCountry)
-			if err := database.DB.Create(tvShow).Error; err != nil {
+			if err := db.Create(tvShow).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create TV show"})
 				return
 			}
@@ -117,14 +116,14 @@ func processTVShow(c *gin.Context, userId uint, tvShow *model.TVShow, status int
 
 	// Many to Many relationship
 	var userTVShow model.UserTVShow
-	if err := database.DB.Where("user_id = ? AND tv_show_id = ?", userId, tvShow.ID).First(&userTVShow).Error; err != nil {
+	if err := db.Where("user_id = ? AND tv_show_id = ?", userId, tvShow.ID).First(&userTVShow).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			userTVShow = model.UserTVShow{
 				UserID:   userId,
 				TVShowID: tvShow.ID,
 				Status:   status,
 			}
-			if err := database.DB.Create(&userTVShow).Error; err != nil {
+			if err := db.Create(&userTVShow).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user-tv_show relation"})
 				return
 			}
@@ -134,7 +133,7 @@ func processTVShow(c *gin.Context, userId uint, tvShow *model.TVShow, status int
 		}
 	} else {
 		userTVShow.Status = status
-		if err := database.DB.Save(&userTVShow).Error; err != nil {
+		if err := db.Save(&userTVShow).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user-tv_show relation"})
 			return
 		}
@@ -143,7 +142,7 @@ func processTVShow(c *gin.Context, userId uint, tvShow *model.TVShow, status int
 	c.JSON(http.StatusOK, gin.H{"message": "User-tv_show relation processed successfully"})
 }
 
-func getUserContentByStatus[T any](c *gin.Context, tableName string, joinTable string, column string) {
+func getUserVisitsByStatus[T any](c *gin.Context, db *gorm.DB, tableName string, joinTable string, column string) {
 	// Get the user ID from the path
 	userID := c.Param("id")
 	if userID == "" {
@@ -171,7 +170,7 @@ func getUserContentByStatus[T any](c *gin.Context, tableName string, joinTable s
 
 	// Fetch total count
 	var totalResults int64
-	if err := database.DB.Table(tableName).
+	if err := db.Table(tableName).
 		Joins(fmt.Sprintf("JOIN %s ON %s.%s = %s.id", joinTable, joinTable, column, tableName)).
 		Where(fmt.Sprintf("%s.user_id = ? AND %s.status = ?", joinTable, joinTable), userID, input.Status).
 		Count(&totalResults).Error; err != nil {
@@ -181,7 +180,7 @@ func getUserContentByStatus[T any](c *gin.Context, tableName string, joinTable s
 
 	// Fetch paginated results
 	var results []T
-	if err := database.DB.Table(tableName).
+	if err := db.Table(tableName).
 		Joins(fmt.Sprintf("JOIN %s ON %s.%s = %s.id", joinTable, joinTable, column, tableName)).
 		Where(fmt.Sprintf("%s.user_id = ? AND %s.status = ?", joinTable, joinTable), userID, input.Status).
 		Limit(resultsPerPage).Offset(offset).
@@ -203,10 +202,10 @@ func getUserContentByStatus[T any](c *gin.Context, tableName string, joinTable s
 	})
 }
 
-func GetUserMoviesByStatus(c *gin.Context) {
-	getUserContentByStatus[model.Movie](c, "movies", "user_movies", "movie_id")
+func GetUserVisitMoviesByStatus(c *gin.Context, db *gorm.DB) {
+	getUserVisitsByStatus[model.Movie](c, db, "movies", "user_movies", "movie_id")
 }
 
-func GetUserTVShowsByStatus(c *gin.Context) {
-	getUserContentByStatus[model.TVShow](c, "tv_shows", "user_tv_shows", "tv_show_id")
+func GetUserVisitTVShowsByStatus(c *gin.Context, db *gorm.DB) {
+	getUserVisitsByStatus[model.TVShow](c, db, "tv_shows", "user_tv_shows", "tv_show_id")
 }

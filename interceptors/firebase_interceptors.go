@@ -1,18 +1,18 @@
-package middleware
+package interceptors
 
 import (
 	"context"
-	"filmatch/database"
+	"filmatch/interfaces"
 	"filmatch/model"
 	"net/http"
 	"strings"
 
-	"firebase.google.com/go/v4/auth"
+	// "firebase.google.com/go/v4/auth"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-func FirebaseAuthMiddleware(client *auth.Client) gin.HandlerFunc {
+func FirebaseAuthInterceptor(firebaseClient interfaces.AuthClient, db *gorm.DB) gin.HandlerFunc {
 	return func(currentContext *gin.Context) {
 		// Let's extract the Authorization header
 		authHeader := currentContext.GetHeader("Authorization")
@@ -32,7 +32,7 @@ func FirebaseAuthMiddleware(client *auth.Client) gin.HandlerFunc {
 
 		// Let's verify the token with Firebase
 		idToken := tokenParts[1]
-		token, err := client.VerifyIDToken(context.Background(), idToken)
+		token, err := firebaseClient.VerifyIDToken(context.Background(), idToken)
 		if err != nil {
 			currentContext.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token", "details": err.Error()})
 			currentContext.Abort()
@@ -48,7 +48,7 @@ func FirebaseAuthMiddleware(client *auth.Client) gin.HandlerFunc {
 		}
 
 		// If the endpoint is "/user/login", let's omit the database query, the user may not exist yet
-		if currentContext.Request.URL.Path == "/user/login" {
+		if currentContext.Request.URL.Path == "/user/auth" {
 			currentContext.Set("uid", token.UID)
 			currentContext.Set("email", email)
 			currentContext.Next()
@@ -57,7 +57,7 @@ func FirebaseAuthMiddleware(client *auth.Client) gin.HandlerFunc {
 
 		// If it's any other endpoint, let's verify if the user exists in the database
 		var user model.User
-		if err := database.DB.Where("email = ?", email).First(&user).Error; err != nil {
+		if err := db.Where("email = ?", email).First(&user).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				currentContext.JSON(http.StatusUnauthorized, gin.H{"error": "User not registered in the system"})
 				currentContext.Abort()
